@@ -1,0 +1,24 @@
+services:
+  pm-worker:
+    build: .
+    image: parts-manager-worker:local
+    restart: unless-stopped
+    init: true
+    environment:
+      PM_WORKER_HOME: /var/lib/pm-worker
+      PM_SERVER_URL: ${PM_SERVER_URL:?Set PM_SERVER_URL in .env}
+      PM_WORKER_NAME: ${PM_WORKER_NAME:-pm-freecad-worker}
+      PM_POLL_SECONDS: ${PM_POLL_SECONDS:-15}
+      FREECAD_CMD: ${FREECAD_CMD:-FreeCADCmd}
+      PYTHONUNBUFFERED: '1'
+    volumes:
+      - worker_state:/var/lib/pm-worker
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 4g
+    # Worker initiates outbound HTTPS; no inbound ports needed.
+volumes:
+  worker_state:
