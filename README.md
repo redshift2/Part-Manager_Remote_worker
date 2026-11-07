@@ -6,12 +6,12 @@ This is the remote worker code for the part manager PLM system
 clone this git repo
 
 copy the env.example file to .env and edit the values for your installation
-''json
+```yaml
 PM_SERVER_URL=https://your-parts-manager-server
 PM_WORKER_NAME=work1
 PM_POLL_SECONDS=15
 FREECAD_CMD=freecadcmd
-''
+```
 
 sudo docker compose build
 
