@@ -25,4 +25,8 @@ It should connect to your server. You will have to into the server admin panel a
 You will also need to upload some control scripts to the server and enabled by the admin user
 <img width="1636" height="255" alt="image" src="https://github.com/user-attachments/assets/3938b465-b53e-471a-903b-eae5d407e050" />
 
-The scripts can be found here
+you will need to assign job type to the script
+
+CAD_TO_GLB  - This will convert the freecad data to a light weight format that can be viewed in the part detail page
+
+The scripts can be found in the scripts folder
