@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CAD_TO_GLB worker: FreeCAD geometry, per-object colors, high quality mesh.
+"""CAD_TO_GLB worker: FreeCAD geometry, per-face colors, high quality mesh.
 Usage: python3 convert_glb.py INPUT_DIR OUTPUT_DIR
 Requires FreeCADCmd on PATH (or FREECAD_CMD) and trimesh, numpy in worker Python.
 """
@@ -13,12 +13,55 @@ HELPER = r'''import FreeCAD as App
 import MeshPart
 import json
 import traceback
+import zipfile
+import struct
+import xml.etree.ElementTree as ET
+
+def saved_appearance_colors(fcstd_path):
+    """Read FreeCAD 1.1 GUI ShapeAppearance (v3) from the FCStd ZIP.
+
+    Each material is 36 bytes. The diffuse color is stored as ARGB
+    at offset 8 within the first record (offset 4 + 4).
+    """
+    result = {}
+    with zipfile.ZipFile(fcstd_path) as archive:
+        if "GuiDocument.xml" not in archive.namelist():
+            return result
+        root = ET.fromstring(archive.read("GuiDocument.xml"))
+        for provider in root.findall(".//ViewProvider"):
+            name = provider.get("name")
+            if not name:
+                continue
+            prop = next((p for p in provider.findall("./Properties/Property")
+                         if p.get("name") == "ShapeAppearance"), None)
+            if prop is None:
+                continue
+            matlist = prop.find("MaterialList")
+            if matlist is None or matlist.get("version") != "3":
+                continue
+            entry = matlist.get("file")
+            if not entry or entry not in archive.namelist():
+                continue
+            data = archive.read(entry)
+            if len(data) < 4:
+                continue
+            count = struct.unpack_from("<I", data, 0)[0]
+            if count == 0 or count > 100000 or len(data) < 4 + count * 36:
+                continue
+            colors = []
+            for i in range(count):
+                # Record layout: ambient ARGB (4), diffuse ARGB (4), ...
+                alpha, red, green, blue = struct.unpack_from("4B", data, 4 + i * 36 + 4)
+                colors.append((red / 255.0, green / 255.0, blue / 255.0))
+            result[name] = colors
+    return result
 
 source = __SOURCE__
 destination = __DEST__
 error_path = __ERROR__
 doc = None
 try:
+    saved_colors = saved_appearance_colors(source)
     doc = App.openDocument(source)
     objects = []
     for obj in doc.Objects:
@@ -27,25 +70,38 @@ try:
         view = getattr(obj, 'ViewObject', None)
         if view is not None and not getattr(view, 'Visibility', True):
             continue
-        # Avoid exporting a parent shape and its visible child geometry twice.
-        mesh = MeshPart.meshFromShape(Shape=obj.Shape, LinearDeflection=0.05,
-                                      AngularDeflection=0.15, Relative=False)
-        if not mesh.CountFacets:
-            continue
-        vertices = []
-        faces = []
-        for facet in mesh.Facets:
-            start = len(vertices)
-            for point in facet.Points:
-                vertices.append([float(point[0]), float(point[1]), float(point[2])])
-            faces.append([start, start + 1, start + 2])
-        color = getattr(view, 'ShapeColor', (0.75, 0.78, 0.82)) if view else (0.75, 0.78, 0.82)
-        # Use per-object appearance; fallback to ShapeColor when no face material.
-        objects.append({'name': str(getattr(obj, 'Label', obj.Name)),
-                        'vertices': vertices, 'faces': faces,
-                        'color': [float(color[i]) for i in range(3)]})
+        faces = list(obj.Shape.Faces)
+        default_color = getattr(view, 'ShapeColor', (0.75, 0.78, 0.82)) if view else (0.75, 0.78, 0.82)
+        diffuse = saved_colors.get(obj.Name)
+        if not diffuse:
+            diffuse = list(getattr(view, 'DiffuseColor', []) or []) if view else []
+        # DiffuseColor contains one entry per topological face when face colors
+        # are assigned; otherwise ShapeColor is the uniform object color.
+        # Tessellate each face separately so triangle/material correspondence
+        # survives mesh generation. MeshPart.meshFromShape(whole_shape) loses it.
+        for face_index, face in enumerate(faces):
+            if diffuse and len(diffuse) == len(faces):
+                color = diffuse[face_index]
+            elif len(diffuse) == 1:
+                color = diffuse[0]
+            else:
+                color = default_color
+            mesh = MeshPart.meshFromShape(Shape=face, LinearDeflection=0.05,
+                                          AngularDeflection=0.15, Relative=False)
+            if not mesh.CountFacets:
+                continue
+            vertices = []
+            triangles = []
+            for facet in mesh.Facets:
+                start = len(vertices)
+                for point in facet.Points:
+                    vertices.append([float(point[0]), float(point[1]), float(point[2])])
+                triangles.append([start, start + 1, start + 2])
+            objects.append({'name': '{}_face_{}'.format(str(getattr(obj, 'Label', obj.Name)), face_index + 1),
+                            'vertices': vertices, 'faces': triangles,
+                            'color': [float(color[i]) for i in range(3)]})
     if not objects:
-        raise RuntimeError('No visible solid geometry to export')
+        raise RuntimeError('No visible geometry to export')
     with open(destination, 'w', encoding='utf-8') as handle:
         json.dump(objects, handle)
 except BaseException:
