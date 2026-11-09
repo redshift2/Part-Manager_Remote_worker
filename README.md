@@ -10,9 +10,13 @@ copy the env.example file to .env and edit the values for your installation
 PM_SERVER_URL=https://your-parts-manager-server
 PM_WORKER_NAME=work1
 PM_POLL_SECONDS=15
-FREECAD_CMD=freecadcmd
+FREECAD_CMD=FreeCADCmd
 ```
 
+You will have to download the freecad app image for the build
+```sh
+wget https://github.com/FreeCAD/FreeCAD/releases/download/1.1.4/FreeCAD_1.1.4-Linux-x86_64-py311.AppImage
+```
 sudo docker compose build
 
 sudo docker compose up -d
