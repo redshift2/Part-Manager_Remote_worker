@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "scripts": [
+    {
+      "name": "convert_glb.py",
+      "version": "1.0.0",
+      "description": "Converts FreeCAD parts into lightweight 3D files for web viewing.",
+      "jobType": "CAD_TO_GLB",
+      "downloadUrl": "https://raw.githubusercontent.com/redshift2/Part-Manager_Remote_worker/main/scripts/convert_glb.py"
+    },
+    {
+      "name": "convert_step.py",
+      "version": "1.0.0",
+      "description": "Converts FreeCAD parts into STEP files.",
+      "jobType": "CAD_TO_STEP",
+      "downloadUrl": "https://raw.githubusercontent.com/redshift2/Part-Manager_Remote_worker/main/scripts/convert_step.py"
+    },
+    {
+      "name": "convert_x3d.py",
+      "version": "1.0.0",
+      "description": "Converts FreeCAD parts into X3D format. Currently not required.",
+      "jobType": "CAD_TO_X3D",
+      "downloadUrl": "https://raw.githubusercontent.com/redshift2/Part-Manager_Remote_worker/main/scripts/convert_x3d.py"
+    }
+  ]
+}
