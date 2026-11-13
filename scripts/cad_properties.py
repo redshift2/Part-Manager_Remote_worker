@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Parts Manager CAD_PROPERTIES worker. Usage: python3 cad_properties.py INPUT_DIR OUTPUT_DIR.
 Requires FreeCADCmd (or FREECAD_CMD) and a job package containing manifest.json and part.FCStd.
-Outputs metadata.json, bom.json and (for assemblies) assembly.json.
+Outputs metadata.json, bom.json and (for assemblies) assembly.asmj.
 No server-side PLM changes are made by this script.
 """
 import json
@@ -400,11 +400,11 @@ def run():
                                 'note':'Saved App::Link instance placements are preserved. An identity transform means the saved FreeCAD link placement is identity, not an estimated position. Unknown PLM IDs remain null.'}}
             base['assembly']={'name':str(root.Label),'cadObjectName':root.Name,
                               'directOccurrences':len(nodes),'distinctComponents':len(bom),
-                              'bomFile':'bom.json','viewerFile':'assembly.json',
+                              'bomFile':'bom.json','viewerFile':'assembly.asmj',
                               'placementWarnings':[n['name']+': no saved placement' for n in nodes if n.get('placementSource')=='missing']+
                                   [n['name']+': LinkPlacement differs from Placement' for n in nodes if n.get('placementConflict')]}
             write('bom.json',bom_data)
-            write('assembly.json',viewer)
+            write('assembly.asmj',viewer)
         else:
             solids=volume_of_part(doc)
             if not solids: raise RuntimeError('No measurable solid geometry in FreeCAD document')
@@ -441,7 +441,7 @@ def main():
     if not cad.is_file(): raise FileNotFoundError(cad)
     helper=output/'_cad_properties_freecad.py'
     error=output/'cad_properties_error.log'
-    for name in ('metadata.json','bom.json','assembly.json','cad_properties_error.log'):
+    for name in ('metadata.json','bom.json','assembly.asmj','assembly.json','cad_properties_error.log'):
         (output/name).unlink(missing_ok=True)
     script=HELPER.replace('__SOURCE__',repr(str(cad.resolve()))).replace('__OUTPUT__',repr(str(output.resolve()))).replace('__ERROR__',repr(str(error.resolve())))
     helper.write_text(script,encoding='utf-8')

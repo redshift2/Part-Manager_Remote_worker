@@ -1,10 +1,11 @@
+```json
 {
   "schemaVersion": 1,
   "scripts": [
     {
       "name": "convert_glb.py",
       "version": "1.0.0",
-      "description": "Converts FreeCAD parts into lightweight 3D files for web viewing.",
+      "description": "Converts FreeCAD parts into lightweight GLB files for web-based 3D viewing.",
       "jobType": "CAD_TO_GLB",
       "downloadUrl": "https://raw.githubusercontent.com/redshift2/Part-Manager_Remote_worker/main/scripts/convert_glb.py"
     },
@@ -16,6 +17,13 @@
       "downloadUrl": "https://raw.githubusercontent.com/redshift2/Part-Manager_Remote_worker/main/scripts/convert_step.py"
     },
     {
+      "name": "cad_properties.py",
+      "version": "1.0.0",
+      "description": "Extracts FreeCAD part and assembly metadata, including geometry, materials, BOM information, component references, and assembly placements. Generates metadata.json, bom.json, and assembly.asmj files for PLM processing.",
+      "jobType": "CAD_TO_META",
+      "downloadUrl": "https://raw.githubusercontent.com/redshift2/Part-Manager_Remote_worker/main/scripts/cad_properties.py"
+    },
+    {
       "name": "convert_x3d.py",
       "version": "1.0.0",
       "description": "Converts FreeCAD parts into X3D format. Currently not required.",
@@ -24,3 +32,4 @@
     }
   ]
 }
+```
