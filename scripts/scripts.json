@@ -13,7 +13,7 @@
       "version": "1.0.0",
       "description": "Converts FreeCAD parts into lightweight GLB files for web-based 3D viewing. This will adjust the convert quality based on the freecad file size. (recommend)",
       "jobType": "CAD_TO_GLB",
-      "downloadUrl": "https://raw.githubusercontent.com/redshift2/Part-Manager_Remote_worker/main/scripts/convert_glb+smart.py"
+      "downloadUrl": "https://raw.githubusercontent.com/redshift2/Part-Manager_Remote_worker/main/scripts/convert_glb_smart.py"
     },
     {
       "name": "convert_step.py",
