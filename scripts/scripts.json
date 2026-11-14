@@ -23,6 +23,13 @@
       "downloadUrl": "https://raw.githubusercontent.com/redshift2/Part-Manager_Remote_worker/main/scripts/convert_step.py"
     },
     {
+      "name": "cad_drawing_svg.py",
+      "version": "1.0.0",
+      "description": "Creates a SVG drawing from the freecad part",
+      "jobType": "CAD_TO_DRW",
+      "downloadUrl": "https://raw.githubusercontent.com/redshift2/Part-Manager_Remote_worker/main/scripts/cad_drawing_svg.py"
+    },
+    {
       "name": "cad_properties.py",
       "version": "1.0.0",
       "description": "Extracts FreeCAD part and assembly metadata, including geometry, materials, BOM information, component references, and assembly placements. Generates metadata.json, bom.json, and assembly.asmj files for PLM processing.",

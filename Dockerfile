@@ -17,6 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfreetype6 \
     libegl1 \
     libopengl0 \
+    xvfb \
+    xauth \
+    libxcb-cursor0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Add the FreeCAD 1.1 AppImage to the build context.
@@ -33,6 +36,11 @@ RUN chmod +x /tmp/FreeCAD.AppImage \
 RUN printf '#!/bin/sh\nexec /opt/freecad/usr/bin/freecadcmd "$@"\n' \
     > /usr/local/bin/FreeCADCmd \
     && chmod +x /usr/local/bin/FreeCADCmd
+
+# GUI FreeCAD launcher for TechDraw macros, under a virtual X11 display.
+RUN printf '#!/bin/sh\nexec /opt/freecad/usr/bin/freecad "$@"\n' \
+    > /usr/local/bin/FreeCADGui \
+    && chmod +x /usr/local/bin/FreeCADGui
 
 # Python environment for the PLM worker.
 RUN python3 -m venv /opt/pm-venv \
@@ -54,6 +62,7 @@ USER pmworker
 
 ENV PATH="/opt/pm-venv/bin:${PATH}"
 ENV FREECAD_CMD="/usr/local/bin/FreeCADCmd"
+ENV FREECAD_GUI="/usr/local/bin/FreeCADGui"
 ENV QT_QPA_PLATFORM="offscreen"
 
 ENTRYPOINT ["python3", "/app/entrypoint.py"]
