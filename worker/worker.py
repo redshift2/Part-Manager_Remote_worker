@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Parts Manager worker phase 2: signed job polling, isolated job execution and ZIP results."""
 import base64
+import ast
 import hashlib
 import subprocess
 import tempfile
@@ -65,6 +66,38 @@ def report(session, base, identity, key, job_id, status, percent, message=''):
     signed_post(session, base, identity, key, 'progress', digest, json_body=payload)
 
 
+def execution_timeout_for_script(script_path, config):
+    """Read the trusted, signed script's embedded JSON schema without executing it.
+
+    A missing timeout uses the worker's configured default (normally 1200 seconds).
+    Per-script overrides are capped at 24 hours.
+    """
+    default = int(config.get('job_timeout_seconds', 1200))
+    source = script_path.read_text(encoding='utf-8-sig')
+    tree = ast.parse(source, filename=str(script_path))
+    schema_text = None
+    for node in tree.body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(target, ast.Name) and target.id == 'SCRIPT_SCHEMA_JSON'
+                   for target in targets):
+                try:
+                    schema_text = ast.literal_eval(node.value)
+                except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+                    raise ValueError('SCRIPT_SCHEMA_JSON must be a literal JSON string')
+    if schema_text is None:
+        return default
+    schema = json.loads(schema_text)
+    if not isinstance(schema, dict):
+        raise ValueError('SCRIPT_SCHEMA_JSON must contain a JSON object')
+    value = schema.get('executionTimeoutSeconds')
+    if value is None:
+        return default
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 86400:
+        raise ValueError('executionTimeoutSeconds must be an integer from 1 to 86400')
+    return value
+
+
 def process_job(session, base, identity, key, job, config):
     job_id = int(job['id'])
     with tempfile.TemporaryDirectory(prefix=f'pm-job-{job_id}-') as temporary:
@@ -83,10 +116,12 @@ def process_job(session, base, identity, key, job, config):
         command = [config.get('python_executable', sys.executable), str(script), str(inputs), str(outputs)]
         if job['jobType'].startswith('CAD_') and config.get('freecad_executable'):
             command = [config['freecad_executable'], str(script), str(inputs), str(outputs)]
+        timeout_seconds = execution_timeout_for_script(script, config)
+        print(f'Job {job_id} execution timeout: {timeout_seconds} seconds', flush=True)
         # Script is administrator-controlled code. Use a dedicated unprivileged worker OS user.
         try:
             proc = subprocess.run(command, cwd=root, capture_output=True, text=True,
-                                  timeout=int(config.get('job_timeout_seconds', 1200)),
+                                  timeout=timeout_seconds,
                                   env={**os.environ, 'PM_JOB_ID': str(job_id), 'PM_JOB_TYPE': job['jobType']})
             log = (proc.stdout + '\n' + proc.stderr)[-100000:]
             (outputs / 'execution.log').write_text(log)
