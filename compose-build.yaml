@@ -18,7 +18,7 @@ services:
     cap_drop:
       - ALL
     pids_limit: 256
-    mem_limit: 4g
+    mem_limit: 20g
     # Worker initiates outbound HTTPS; no inbound ports needed.
 volumes:
   worker_state:
