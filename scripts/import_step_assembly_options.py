@@ -15,6 +15,12 @@ SCRIPT_SCHEMA_JSON = r'''
 {
   "fields": [
     {
+      "name": "executionTimeoutSeconds",
+      "label": "Execution Timeout (seconds)",
+      "type": "integer",
+      "default": 3600
+    },
+    {
       "name": "splitAssembly",
       "label": "Split Assembly into Parts",
       "type": "boolean",
@@ -264,6 +270,10 @@ def main():
     if prefix and not re.fullmatch(r'[A-Za-z0-9_.-]+', prefix):
         raise ValueError('prefix may contain only letters, numbers, _, -, .')
     options['prefix'] = prefix
+    timeout_value = raw_options.get('executionTimeoutSeconds', 3600)
+    if isinstance(timeout_value, bool) or not isinstance(timeout_value, int) or not 1 <= timeout_value <= 86400:
+        raise ValueError('executionTimeoutSeconds must be an integer from 1 to 86400')
+    options['executionTimeoutSeconds'] = timeout_value
     print('STEP importer options: ' + json.dumps(options, sort_keys=True), flush=True)
     preferred = manifest.get('inputFile')
     if preferred:
@@ -290,7 +300,8 @@ def main():
     env = dict(os.environ, QT_QPA_PLATFORM='xcb')
     try:
         completed = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                   text=True, env=env, timeout=1800)
+                                   text=True, env=env,
+                                   timeout=options["executionTimeoutSeconds"])
         print(completed.stdout, flush=True)
         if completed.returncode or not result.is_file():
             raise RuntimeError('STEP import failed (exit %s): %s' %
