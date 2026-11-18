@@ -12,6 +12,9 @@ import os
 from pathlib import Path
 import secrets
 import socket
+
+WORKER_BUILD_VERSION = "1.2.0"
+
 import sys
 import time
 import requests
@@ -66,7 +69,7 @@ def report(session, base, identity, key, job_id, status, percent, message=''):
     signed_post(session, base, identity, key, 'progress', digest, json_body=payload)
 
 
-def execution_timeout_for_script(script_path, config):
+def execution_timeout_for_script(script_path, config, inputs=None):
     """Read the trusted, signed script's embedded JSON schema without executing it.
 
     A missing timeout uses the worker's configured default (normally 1200 seconds).
@@ -92,7 +95,19 @@ def execution_timeout_for_script(script_path, config):
         raise ValueError('SCRIPT_SCHEMA_JSON must contain a JSON object')
     value = schema.get('executionTimeoutSeconds')
     if value is None:
-        return default
+        # A schema field is user-configurable; read its submitted value from manifest.
+        fields = schema.get('fields', [])
+        timeout_field = next((f for f in fields if isinstance(f, dict) and f.get('name') == 'executionTimeoutSeconds'), None)
+        if timeout_field is None:
+            return default
+        value = timeout_field.get('default', default)
+        if inputs is not None and (inputs / 'manifest.json').is_file():
+            manifest = json.loads((inputs / 'manifest.json').read_text(encoding='utf-8'))
+            options = manifest.get('scriptOptions', {})
+            if isinstance(options, str):
+                options = json.loads(options)
+            if isinstance(options, dict):
+                value = options.get('executionTimeoutSeconds', value)
     if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 86400:
         raise ValueError('executionTimeoutSeconds must be an integer from 1 to 86400')
     return value
@@ -116,7 +131,7 @@ def process_job(session, base, identity, key, job, config):
         command = [config.get('python_executable', sys.executable), str(script), str(inputs), str(outputs)]
         if job['jobType'].startswith('CAD_') and config.get('freecad_executable'):
             command = [config['freecad_executable'], str(script), str(inputs), str(outputs)]
-        timeout_seconds = execution_timeout_for_script(script, config)
+        timeout_seconds = execution_timeout_for_script(script, config, inputs)
         print(f'Job {job_id} execution timeout: {timeout_seconds} seconds', flush=True)
         # Script is administrator-controlled code. Use a dedicated unprivileged worker OS user.
         try:
@@ -168,7 +183,8 @@ def main():
     if not identity['workerId']:
         payload = {'name': config['worker_name'], 'publicKey': public,
                    'capabilities': config.get('capabilities', ['ALL_JOBS']),
-                   'maxConcurrentJobs': config.get('max_concurrent_jobs', 1)}
+                   'maxConcurrentJobs': config.get('max_concurrent_jobs', 1),
+                   'buildVersion': WORKER_BUILD_VERSION}
         r = session.post(base + '/serverAdmin/registerWorker', json=payload, timeout=20)
         r.raise_for_status()
         response = r.json()
@@ -176,6 +192,7 @@ def main():
         save_private(IDENTITY, identity)
         print('Registered worker:', identity['workerId'], 'status:', response['status'])
     print('Worker identity:', identity['workerId'])
+    print('Worker build version:', WORKER_BUILD_VERSION)
     while True:
         heartbeat_ok = False
         timestamp = str(int(time.time()))
@@ -185,7 +202,8 @@ def main():
         try:
             r = session.post(base + '/serverAdmin/workerHeartbeat', json={
                 'workerId': identity['workerId'], 'timestamp': timestamp,
-                'nonce': nonce, 'signature': signature}, timeout=20)
+                'nonce': nonce, 'signature': signature,
+                'buildVersion': WORKER_BUILD_VERSION}, timeout=20)
             if r.status_code == 403:
                 print('Awaiting approval (or identity revoked).')
             else:
