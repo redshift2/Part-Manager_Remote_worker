@@ -13,7 +13,7 @@ from pathlib import Path
 import secrets
 import socket
 
-WORKER_BUILD_VERSION = "1.2.0"
+WORKER_BUILD_VERSION = "1.3"
 
 import sys
 import time
@@ -33,17 +33,68 @@ def save_private(path, data):
         json.dump(data, f, indent=2)
 
 
-def signed_post(session, base, identity, key, action, payload_hash='-', *, params=None, json_body=None, data=None):
+def signed_post(session, base, identity, key, action, payload_hash='-', *, params=None, json_body=None, data=None, timeout=180):
     timestamp = str(int(time.time()))
     nonce = secrets.token_urlsafe(24)
     message = f"{identity['workerId']}:{timestamp}:{nonce}:{action}:{payload_hash}".encode()
     headers = {'X-Worker-Id': identity['workerId'], 'X-Worker-Timestamp': timestamp,
                'X-Worker-Nonce': nonce, 'X-Worker-Signature': base64.b64encode(key.sign(message)).decode()}
     response = session.post(base + '/serverAdmin/worker' + action.title(), params=params,
-                            json=json_body, data=data, headers=headers, timeout=180)
+                            json=json_body, data=data, headers=headers, timeout=timeout)
     response.raise_for_status()
     return response
 
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with path.open('rb') as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def upload_result(session, base, identity, key, job_id, archive, config):
+    """Send raw ZIP bytes using bounded memory, preserving the existing signed protocol.
+
+    Each attempt opens the file afresh and creates a new signed request/nonce.
+    A lost response may mean the server already accepted the result; the server
+    must handle a repeated completion safely for automatic retries.
+    """
+    size = archive.stat().st_size
+    digest = file_sha256(archive)
+    retries = max(0, min(5, int(config.get('result_upload_retries', 2))))
+    connect_timeout = max(5, int(config.get('result_upload_connect_timeout_seconds', 30)))
+    read_timeout = max(60, int(config.get('result_upload_read_timeout_seconds', 3600)))
+    print(f'Uploading job {job_id} result: {size} bytes, SHA-256 {digest}', flush=True)
+    for attempt in range(retries + 1):
+        try:
+            with archive.open('rb') as stream:
+                # A regular file is handled by requests as a streamed body with
+                # Content-Length; no multipart encoding or in-memory ZIP copy.
+                signed_post(session, base, identity, key, 'result', f'{job_id}:{digest}',
+                            params={'id': job_id}, data=stream,
+                            timeout=(connect_timeout, read_timeout))
+            return
+        except (requests.RequestException, OSError) as exc:
+            if attempt == retries:
+                raise
+            delay = min(60, 5 * (2 ** attempt))
+            print(f'Job {job_id} result upload attempt {attempt + 1} failed: {exc}; '
+                  f'retrying in {delay}s', flush=True)
+            time.sleep(delay)
+
+
+def retain_failed_result(job_id, archive):
+    """Keep generated ZIP outside the temporary job directory after failure."""
+    if not archive.is_file():
+        return
+    destination_dir = ROOT / 'failed-results'
+    destination_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    destination = destination_dir / f'job-{job_id}-{int(time.time())}.zip'
+    shutil.copyfile(archive, destination)
+    destination.chmod(0o600)
+    print(f'Job {job_id} result retained at {destination}', flush=True)
 
 def safe_extract(archive, destination):
     with zipfile.ZipFile(archive) as z:
@@ -150,10 +201,14 @@ def process_job(session, base, identity, key, job, config):
             for path in outputs.rglob('*'):
                 if path.is_file() and not path.is_symlink():
                     z.write(path, path.relative_to(outputs))
-        data = archive.read_bytes()
-        digest = hashlib.sha256(data).hexdigest()
-        signed_post(session, base, identity, key, 'result', f'{job_id}:{digest}',
-                    params={'id': job_id}, data=data)
+        try:
+            upload_result(session, base, identity, key, job_id, archive, config)
+        except Exception:
+            try:
+                retain_failed_result(job_id, archive)
+            except Exception as preserve_error:
+                print(f'Could not retain job {job_id} result: {preserve_error}', file=sys.stderr)
+            raise
         print('Completed job', job_id)
 
 
